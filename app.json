@@ -3,10 +3,11 @@
     "name": "ZeroWitness",
     "slug": "ZeroWitness",
     "version": "1.0.0",
+    "jsEngine": "hermes",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -21,8 +22,20 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.ankitajha_753.ZeroWitness",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
+    "extra": {
+      "proofServerUrl": "https://zero-witness.onrender.com"
+    },
+    "plugins": ["expo-camera", "expo-location"],
     "web": {
       "favicon": "./assets/favicon.png"
     }
