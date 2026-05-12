@@ -1,4 +1,5 @@
 import dns from "dns";
+import { Agent, setGlobalDispatcher } from "undici";
 import express from "express";
 import cors from "cors";
 import { createHash } from "crypto";
@@ -12,6 +13,13 @@ import { BarretenbergBackend } from "@noir-lang/backend_barretenberg";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dns.setDefaultResultOrder("ipv4first");
+setGlobalDispatcher(
+  new Agent({
+    connect: {
+      family: 4,
+    },
+  }),
+);
 const circuitPath = path.resolve(
   __dirname,
   "..",
