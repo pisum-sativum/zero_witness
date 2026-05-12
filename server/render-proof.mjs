@@ -52,6 +52,44 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+app.get("/debug-crs", async (_req, res) => {
+  try {
+    const testUrl =
+      "https://aztec-ignition.s3.amazonaws.com/MAIN%20IGNITION/flat/g1.dat";
+    const response = await fetchWithTimeout(
+      testUrl,
+      {
+        headers: {
+          Range: "bytes=0-63",
+        },
+      },
+      10000,
+    );
+
+    const ok = response.ok;
+    const status = response.status;
+    const contentLength = response.headers.get("content-length");
+    res.json({ ok, status, contentLength });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error("Unknown error");
+    res.status(500).json({
+      error: err.message,
+      name: err.name,
+      cause: err.cause instanceof Error ? err.cause.message : undefined,
+    });
+  }
+});
+
 app.post("/prove", async (req, res) => {
   try {
     const { imageBase64, latitude, longitude } = req.body || {};
@@ -91,9 +129,13 @@ app.post("/prove", async (req, res) => {
       imageHash,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("Render proof server error:", error);
-    return res.status(500).json({ error: message });
+    const err = error instanceof Error ? error : new Error("Unknown error");
+    console.error("Render proof server error:", err);
+    return res.status(500).json({
+      error: err.message,
+      name: err.name,
+      cause: err.cause instanceof Error ? err.cause.message : undefined,
+    });
   }
 });
 
