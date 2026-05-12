@@ -91,7 +91,10 @@ app.get("/debug-crs", async (_req, res) => {
 });
 
 app.post("/prove", async (req, res) => {
+  let step = "start";
+  let backend;
   try {
+    step = "validate";
     const { imageBase64, latitude, longitude } = req.body || {};
     if (!imageBase64 || typeof imageBase64 !== "string") {
       return res.status(400).json({ error: "imageBase64 is required" });
@@ -102,9 +105,12 @@ app.post("/prove", async (req, res) => {
         .json({ error: "latitude and longitude are required" });
     }
 
+    step = "loadCircuit";
     const circuit = await loadCircuit();
+    step = "hash";
     const imageHash = computeSafeHash(imageBase64);
 
+    step = "inputs";
     const lat = Math.floor(latitude * 10000);
     const lon = Math.floor(longitude * 10000);
     const inputs = {
@@ -118,11 +124,15 @@ app.post("/prove", async (req, res) => {
       public_image_hash: imageHash,
     };
 
-    const backend = new BarretenbergBackend(circuit);
+    step = "backend";
+    backend = new BarretenbergBackend(circuit, { threads: 1 });
     const noir = new Noir(circuit);
+    step = "execute";
     const { witness } = await noir.execute(inputs);
+    step = "prove";
     const { proof, publicInputs } = await backend.generateProof(witness);
 
+    step = "respond";
     return res.json({
       proof: Buffer.from(proof).toString("base64"),
       publicInputs,
@@ -134,8 +144,18 @@ app.post("/prove", async (req, res) => {
     return res.status(500).json({
       error: err.message,
       name: err.name,
+      step,
+      stack: err.stack,
       cause: err.cause instanceof Error ? err.cause.message : undefined,
     });
+  } finally {
+    if (backend?.destroy) {
+      try {
+        await backend.destroy();
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
   }
 });
 
