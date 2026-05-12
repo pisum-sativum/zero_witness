@@ -1,3 +1,4 @@
+import dns from "dns";
 import express from "express";
 import cors from "cors";
 import { createHash } from "crypto";
@@ -10,6 +11,7 @@ import { BarretenbergBackend } from "@noir-lang/backend_barretenberg";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+dns.setDefaultResultOrder("ipv4first");
 const circuitPath = path.resolve(
   __dirname,
   "..",
