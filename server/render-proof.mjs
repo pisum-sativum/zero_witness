@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 import JSBI from "jsbi";
 import { Noir } from "@noir-lang/noir_js";
 import { BarretenbergBackend } from "@noir-lang/backend_barretenberg";
+import { compileCircuit } from "./compile-circuit.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,6 +34,9 @@ app.use(cors());
 app.use(express.json({ limit: "25mb" }));
 
 let circuitCache = null;
+let compileState = "pending";
+let compileError = null;
+let compilePromise = null;
 
 async function loadCircuit() {
   if (circuitCache) {
@@ -49,7 +53,11 @@ function computeSafeHash(base64) {
 }
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    compileState,
+    compileError: compileError?.message ?? null,
+  });
 });
 
 async function fetchWithTimeout(url, options, timeoutMs) {
@@ -90,10 +98,77 @@ app.get("/debug-crs", async (_req, res) => {
   }
 });
 
+app.get("/debug-circuit", async (_req, res) => {
+  try {
+    const circuit = await loadCircuit();
+    res.json({
+      compileState,
+      compileError: compileError?.message ?? null,
+      noirVersion: circuit?.noir_version ?? null,
+      bytecodeLength: circuit?.bytecode?.length ?? 0,
+      circuitHash: circuit?.hash ?? null,
+      publicInputs:
+        circuit?.abi?.parameters?.filter(
+          (param) => param?.visibility === "public",
+        )?.length ?? 0,
+    });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error("Unknown error");
+    res.status(500).json({
+      error: err.message,
+      name: err.name,
+      cause: err.cause instanceof Error ? err.cause.message : undefined,
+    });
+  }
+});
+
+let isProving = false;
+const proofQueue = [];
+
+async function acquireLock() {
+  if (!isProving) {
+    isProving = true;
+    return;
+  }
+  return new Promise((resolve) => proofQueue.push(resolve));
+}
+
+function releaseLock() {
+  if (proofQueue.length > 0) {
+    const next = proofQueue.shift();
+    next();
+  } else {
+    isProving = false;
+  }
+}
+
 app.post("/prove", async (req, res) => {
   let step = "start";
   let backend;
+  await acquireLock();
   try {
+    if (!compilePromise) {
+      compilePromise = compileCircuit();
+    }
+    if (compileState === "pending") {
+      try {
+        await compilePromise;
+        compileState = "ready";
+        compileError = null;
+        circuitCache = null;
+      } catch (error) {
+        compileState = "failed";
+        compileError =
+          error instanceof Error ? error : new Error("Unknown error");
+      }
+    }
+    if (compileState === "failed") {
+      return res.status(503).json({
+        error: "Circuit compile failed",
+        detail: compileError?.message ?? "Unknown error",
+      });
+    }
+
     step = "validate";
     const { imageBase64, latitude, longitude } = req.body || {};
     if (!imageBase64 || typeof imageBase64 !== "string") {
@@ -156,10 +231,35 @@ app.post("/prove", async (req, res) => {
         // Ignore cleanup errors
       }
     }
+    if (global.gc) {
+      global.gc();
+    }
+    releaseLock();
   }
 });
 
 const port = Number(process.env.PORT || 4000);
-app.listen(port, "0.0.0.0", () => {
-  console.log(`Render proof server running on http://localhost:${port}`);
+
+async function startServer() {
+  compilePromise = compileCircuit();
+  compilePromise
+    .then(() => {
+      compileState = "ready";
+      compileError = null;
+      circuitCache = null;
+    })
+    .catch((error) => {
+      compileState = "failed";
+      compileError =
+        error instanceof Error ? error : new Error("Unknown error");
+      console.error("Circuit compile failed:", compileError);
+    });
+  app.listen(port, "0.0.0.0", () => {
+    console.log(`Render proof server running on http://localhost:${port}`);
+  });
+}
+
+startServer().catch((error) => {
+  console.error("Render proof server failed to start:", error);
+  process.exit(1);
 });

@@ -33,7 +33,7 @@
       ]
     },
     "extra": {
-      "proofServerUrl": "https://zero-witness.onrender.com"
+      "_proofServerUrl": "https://zero-witness.onrender.com"
     },
     "plugins": ["expo-camera", "expo-location"],
     "web": {
